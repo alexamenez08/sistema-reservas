@@ -5,7 +5,7 @@
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Gestión de Eventos
+                {{ $puedeGestionar ? 'Gestión de Eventos' : 'Mis Eventos' }}
             </h2>
 @if($puedeGestionar)
             <a href="{{ route('eventos.create') }}"
@@ -89,7 +89,7 @@
                             <tr>
                                 <td colspan="5" class="px-6 py-12 text-center text-gray-400">
                                     <span class="material-symbols-outlined text-4xl block mb-2">event_busy</span>
-                                    No hay eventos registrados.
+                                    {{ $puedeGestionar ? 'No hay eventos registrados.' : 'Aún no tienes eventos asignados.' }}
                                 </td>
                             </tr>
                         @endforelse

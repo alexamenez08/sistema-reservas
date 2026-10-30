@@ -15,12 +15,21 @@ class EventoController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
-        //
-        $eventos = Evento::has('reservacion')
-            ->with(['reservacion.cliente', 'reservacion.locacion'])
-            ->latest()->paginate(10);
+        /** @var \App\Models\User $usuario */
+        $usuario = $request->user();
+
+        $consulta = Evento::has('reservacion')
+            ->with(['reservacion.cliente', 'reservacion.locacion']);
+
+        // El staff solo ve los eventos en los que está asignado
+        if (! $usuario->hasAnyRole(['administrador', 'coordinador'])) {
+            $consulta->whereHas('staff', fn ($q) => $q->where('empleado_id', $usuario->id));
+        }
+
+        $eventos = $consulta->latest()->paginate(10);
+
         return view('eventos.index', compact('eventos'));
     }
 
@@ -53,9 +62,17 @@ class EventoController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Evento $evento): View
+    public function show(Request $request, Evento $evento): View
     {
-        //
+        /** @var \App\Models\User $usuario */
+        $usuario = $request->user();
+
+        // El staff no puede abrir (ni por URL) un evento en el que no está asignado
+        if (! $usuario->hasAnyRole(['administrador', 'coordinador'])
+            && ! $evento->staff()->where('empleado_id', $usuario->id)->exists()) {
+            abort(403, 'No estás asignado a este evento.');
+        }
+
         $evento->load([
             'reservacion.cliente',
             'reservacion.locacion',

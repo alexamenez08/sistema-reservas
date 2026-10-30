@@ -9,13 +9,16 @@ use App\Http\Controllers\CategoriaMobiliarioController;
 use App\Http\Controllers\ClienteController;
 use App\Http\Controllers\ConfiguracionNegocioController;
 use App\Http\Controllers\CotizacionController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EventoController;
 use App\Http\Controllers\LocacionController;
 use App\Http\Controllers\MapaController;
 use App\Http\Controllers\MobiliarioController;
 use App\Http\Controllers\PaqueteController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\ReservacionController;
+use App\Http\Controllers\RespaldoController;
 use App\Http\Controllers\UserController;
 use App\Models\CategoriaMobiliario;
 use Illuminate\Http\Request;
@@ -48,14 +51,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
  
     // El administrador ve el dashboard; coordinador y staff entran directo al calendario
-    Route::get('/dashboard', function (Request $request) {
-        /** @var \App\Models\User $usuario */
-        $usuario = $request->user();
- 
-        return $usuario->hasRole('administrador')
-            ? view('dashboard')
-            : redirect()->route('calendario.index');
-    })->name('dashboard');
+    // (la redirección está en DashboardController)
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
  
     Route::get('/calendario', [CalendarioController::class, 'index'])->name('calendario.index');
     Route::get('/calendario/eventos', [CalendarioController::class, 'eventos'])->name('calendario.eventos');
@@ -66,6 +63,23 @@ Route::middleware('auth')->group(function () {
  
         Route::get('/empresa', [ConfiguracionNegocioController::class, 'edit'])->name('empresa.edit');
         Route::put('/empresa', [ConfiguracionNegocioController::class, 'update'])->name('empresa.update');
+ 
+        // Respaldo y restauración de la base de datos (FN19)
+        Route::prefix('respaldos')->name('respaldos.')->group(function () {
+            Route::get('/', [RespaldoController::class, 'index'])->name('index');
+            Route::post('/', [RespaldoController::class, 'store'])->name('store');
+            Route::post('/restaurar', [RespaldoController::class, 'restaurar'])->name('restaurar');
+            Route::get('/{archivo}/descargar', [RespaldoController::class, 'descargar'])->name('descargar');
+            Route::delete('/{archivo}', [RespaldoController::class, 'destroy'])->name('destroy');
+        });
+ 
+        // Reportes (FN15 a FN18): cada uno se descarga en PDF con ?pdf=1
+        Route::prefix('reportes')->name('reportes.')->group(function () {
+            Route::get('/ingresos', [ReportesController::class, 'ingresos'])->name('ingresos');
+            Route::get('/ocupacion', [ReportesController::class, 'ocupacion'])->name('ocupacion');
+            Route::get('/paquetes', [ReportesController::class, 'paquetes'])->name('paquetes');
+            Route::get('/concentracion', [ReportesController::class, 'concentracion'])->name('concentracion');
+        });
     });
  
     // ---------- Administrador y coordinador ----------

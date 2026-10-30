@@ -3,16 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Locacion;
-use Illuminate\Http\Request;
 use App\Models\Reservacion;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class CalendarioController extends Controller
 {
-/**
+    /**
      * Color y etiqueta por estado de la reservación.
      * Cambia aquí los colores si quieres ajustarlos (FN11 del documento).
      *
@@ -27,9 +27,9 @@ class CalendarioController extends Controller
         'en curso'   => ['color' => '#ef4444', 'tinte' => 'rgba(239, 68, 68, 0.20)',  'etiqueta' => 'En curso',             'prioridad' => 3],
         'finalizada' => ['color' => '#6b7280', 'tinte' => 'rgba(107, 114, 128, 0.15)', 'etiqueta' => 'Finalizada',           'prioridad' => 1],
     ];
- 
+
     private const TINTE_DISPONIBLE = 'rgba(34, 197, 94, 0.18)';
- 
+
     /**
      * Vista principal del calendario.
      */
@@ -38,15 +38,15 @@ class CalendarioController extends Controller
         $locaciones = Locacion::where('activo', true)
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
- 
+
         // Staff: solo consulta (sin finanzas ni acceso a reservaciones)
         /** @var \App\Models\User $usuario */
         $usuario = $request->user();
         $puedeGestionar = $usuario->hasAnyRole(['administrador', 'coordinador']);
- 
+
         return view('calendario.index', compact('locaciones', 'puedeGestionar'));
     }
- 
+
     /**
      * Feed JSON que consume FullCalendar (se llama cada vez que cambia el rango visible).
      * Devuelve:
@@ -60,17 +60,17 @@ class CalendarioController extends Controller
             'end'         => ['required', 'date'],
             'locacion_id' => ['nullable', 'integer', 'exists:locaciones,id'],
         ]);
- 
+
         // FullCalendar manda ISO8601 con zona (ej. 2026-10-01T00:00:00-06:00); nos quedamos con la fecha.
         $desde      = Carbon::parse($request->input('start'))->toDateString();
         $hasta      = Carbon::parse($request->input('end'))->toDateString(); // exclusivo
         $locacionId = $request->input('locacion_id');
- 
+
         // El staff no ve el estado financiero ni el enlace a la reservación
         /** @var \App\Models\User $usuario */
         $usuario = $request->user();
         $puedeGestionar = $usuario->hasAnyRole(['administrador', 'coordinador']);
- 
+
         // Las canceladas se hacen soft delete en ReservacionController@destroy,
         // así que ya quedan fuera; el whereNotIn cubre las que solo cambian de status.
         $reservaciones = Reservacion::query()
@@ -80,25 +80,27 @@ class CalendarioController extends Controller
             ->where('dia_evento', '>=', $desde)
             ->where('dia_evento', '<', $hasta)
             ->when($locacionId, fn ($q) => $q->where('locacion_id', $locacionId))
+            // El staff solo ve los eventos en los que está asignado
+            ->when(! $puedeGestionar, fn ($q) => $q->whereHas('evento.staff', fn ($s) => $s->where('empleado_id', $usuario->id)))
             ->orderBy('hora_inicio')
             ->get();
- 
+
         $eventos = [];
- 
+
         /* ---------- 1. Una entrada por reservación ---------- */
         foreach ($reservaciones as $r) {
             $estado = self::ESTADOS[$r->status] ?? self::ESTADOS['pendiente'];
- 
+
             $anticipado = (float) ($r->total_anticipos ?? 0);
             $financiero = match (true) {
                 $anticipado <= 0                         => 'Sin anticipo',
                 (float) $r->saldo_pendiente <= 0         => 'Liquidada',
                 default                                  => 'Anticipo parcial',
             };
- 
+
             $cliente  = $r->cliente?->nombre_completo ?? 'Cliente eliminado';
             $locacion = $r->locacion?->nombre ?? 'Locación eliminada';
- 
+
             $eventos[] = [
                 'id'              => 'res-' . $r->id,
                 'title'           => $cliente . ' · ' . $locacion,
@@ -122,23 +124,24 @@ class CalendarioController extends Controller
                 ],
             ];
         }
- 
+
         /* ---------- 2. Color de fondo de cada día ---------- */
         $totalLocaciones = $locacionId
             ? 1
             : Locacion::where('activo', true)->count();
- 
+
         $porDia = $reservaciones->groupBy(fn ($r) => $r->dia_evento->toDateString());
         $hoy    = Carbon::today()->toDateString();
- 
+
         $periodo = CarbonPeriod::create($desde, Carbon::parse($hasta)->subDay()->toDateString());
- 
-        foreach ($periodo as $dia) {
+
+        // El color de disponibilidad (verde/amarillo/rojo) es solo para administrador y coordinador
+        foreach ($puedeGestionar ? $periodo : [] as $dia) {
             $fecha    = $dia->toDateString();
             $delDia   = $porDia->get($fecha);
             $ocupadas = $delDia ? $delDia->pluck('locacion_id')->unique()->count() : 0;
             $llena    = $totalLocaciones > 0 && $ocupadas >= $totalLocaciones;
- 
+
             if ($llena) {
                 // Todo ocupado: se tiñe con el estado más "fuerte" del día (rojo > amarillo > gris).
                 $tinte = $delDia
@@ -151,7 +154,7 @@ class CalendarioController extends Controller
             } else {
                 continue; // días pasados sin ocupación: sin color
             }
- 
+
             $eventos[] = [
                 'id'      => 'bg-' . $fecha,
                 'start'   => $fecha,
@@ -161,7 +164,7 @@ class CalendarioController extends Controller
                 'color'   => $tinte,
             ];
         }
- 
+
         return response()->json($eventos);
     }
 }

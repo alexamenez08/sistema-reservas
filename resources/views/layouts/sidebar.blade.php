@@ -4,17 +4,17 @@
     $esOperativo = $usuario->hasAnyRole(['administrador', 'coordinador']);
     $empresa     = \App\Models\ConfiguracionNegocio::actual();
 
-    $enlace  = 'flex items-center px-4 py-3 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors';
-    $activo  = 'bg-gray-100 text-gray-900 font-semibold';
+    $enlace  = 'flex items-center px-4 py-3 text-slate-300 hover:bg-[#15335f] hover:text-white rounded-lg transition-colors';
+    $activo  = 'bg-[#1d4478] text-white font-semibold';
 @endphp
 
-<aside class="w-64 bg-white border-r border-gray-100 min-h-screen hidden sm:block">
+<aside class="w-64 bg-[#0b1f3a] border-r border-[#15335f] min-h-screen hidden sm:block">
     <!-- Logo y nombre de la empresa -->
-    <div class="flex items-center justify-center gap-3 h-16 border-b border-gray-100 px-4">
+    <div class="flex items-center justify-center gap-3 h-16 border-b border-[#15335f] px-4">
         @if($empresa->logo_url)
-            <img src="{{ $empresa->logo_url }}" alt="Logo" class="h-9 w-auto max-w-[44px] object-contain">
+            <img src="{{ $empresa->logo_url }}" alt="Logo" class="h-10 w-auto max-w-[48px] object-contain bg-white rounded-lg p-1">
         @endif
-        <span class="text-lg font-bold text-gray-800 truncate">{{ $empresa->nombre_mostrar }}</span>
+        <span class="text-lg font-bold text-white truncate">{{ $empresa->nombre_mostrar }}</span>
     </div>
 
     <!-- Enlaces del menú (cada rol ve solo lo suyo) -->
@@ -76,6 +76,33 @@
             </a>
         @endif
 
+        {{-- Reportes (solo administrador) --}}
+        @if($esAdmin)
+            <p class="px-4 pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">Reportes</p>
+
+            <a href="{{ route('reportes.ingresos') }}" class="{{ $enlace }} {{ request()->routeIs('reportes.ingresos') ? $activo : '' }}">
+                <span class="material-symbols-outlined mr-3 text-[20px]">payments</span>
+                Ingresos y saldos
+            </a>
+
+            <a href="{{ route('reportes.ocupacion') }}" class="{{ $enlace }} {{ request()->routeIs('reportes.ocupacion') ? $activo : '' }}">
+                <span class="material-symbols-outlined mr-3 text-[20px]">bar_chart</span>
+                Ocupación
+            </a>
+
+            <a href="{{ route('reportes.paquetes') }}" class="{{ $enlace }} {{ request()->routeIs('reportes.paquetes') ? $activo : '' }}">
+                <span class="material-symbols-outlined mr-3 text-[20px]">inventory_2</span>
+                Paquetes más pedidos
+            </a>
+
+            <a href="{{ route('reportes.concentracion') }}" class="{{ $enlace }} {{ request()->routeIs('reportes.concentracion') ? $activo : '' }}">
+                <span class="material-symbols-outlined mr-3 text-[20px]">date_range</span>
+                Eventos por periodo
+            </a>
+
+            <p class="px-4 pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">Administración</p>
+        @endif
+
         {{-- Solo administrador --}}
         @if($esAdmin)
             <a href="{{ route('usuarios.index') }}" class="{{ $enlace }} {{ request()->routeIs('usuarios.*') ? $activo : '' }}">
@@ -86,6 +113,11 @@
             <a href="{{ route('empresa.edit') }}" class="{{ $enlace }} {{ request()->routeIs('empresa.*') ? $activo : '' }}">
                 <span class="material-symbols-outlined mr-3 text-[20px]">business</span>
                 Empresa
+            </a>
+
+            <a href="{{ route('respaldos.index') }}" class="{{ $enlace }} {{ request()->routeIs('respaldos.*') ? $activo : '' }}">
+                <span class="material-symbols-outlined mr-3 text-[20px]">backup</span>
+                Respaldos
             </a>
         @endif
 
