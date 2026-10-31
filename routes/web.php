@@ -14,6 +14,7 @@ use App\Http\Controllers\EventoController;
 use App\Http\Controllers\LocacionController;
 use App\Http\Controllers\MapaController;
 use App\Http\Controllers\MobiliarioController;
+use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\PaqueteController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportesController;
@@ -56,6 +57,11 @@ Route::middleware('auth')->group(function () {
  
     Route::get('/calendario', [CalendarioController::class, 'index'])->name('calendario.index');
     Route::get('/calendario/eventos', [CalendarioController::class, 'eventos'])->name('calendario.eventos');
+ 
+    // Panel de notificaciones cada usuario ve solo las suyas
+    Route::get('/notificaciones', [NotificacionController::class, 'index'])->name('notificaciones.index');
+    Route::post('/notificaciones/leer-todas', [NotificacionController::class, 'leerTodas'])->name('notificaciones.leer-todas');
+    Route::get('/notificaciones/{id}/abrir', [NotificacionController::class, 'abrir'])->name('notificaciones.abrir');
  
     // ---------- Solo administrador ----------
     Route::middleware('rol:administrador')->group(function () {

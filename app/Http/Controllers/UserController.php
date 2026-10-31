@@ -8,6 +8,7 @@ use Spatie\Permission\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Redirect;
+use App\Notifications\BienvenidaUsuario;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
@@ -15,11 +16,9 @@ use Illuminate\Support\Str;
 use Throwable;
 use App\Http\Requests\UserRequest;
 
+
 class UserController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     /**
      * Display a listing of the resource.
      */
@@ -29,7 +28,7 @@ class UserController extends Controller
         $usuarios = User::with('roles')->latest()->paginate(10);
         return view('usuarios.index', compact('usuarios'));
     }
- 
+
     /**
      * Show the form for creating a new resource.
      */
@@ -38,9 +37,9 @@ class UserController extends Controller
         //
         $roles = Role::all();
         return view('usuarios.create', compact('roles'));
- 
+
     }
- 
+
     /**
      * Store a newly created resource in storage.
      */
@@ -55,27 +54,26 @@ class UserController extends Controller
             'password' => Hash::make(Str::random(12)),
             'is_active' => true,
         ]);
- 
+
         $usuario->assignRole($request->rol);
- 
-        // La contraseña inicial es aleatoria y nadie la conoce: se envía un correo con un enlace
-        // (el mismo de "Olvidé mi contraseña", con vigencia limitada) para que el usuario defina la suya.
+
+        // La contraseña inicial es aleatoria y nadie la conoce: se envía el correo de bienvenida (FN20)
+        // con un enlace de vigencia limitada para que el usuario defina la suya.
         $mensaje = 'Usuario creado correctamente.';
         try {
-            $estado = Password::sendResetLink(['email' => $usuario->email]);
- 
-            $mensaje .= $estado === Password::RESET_LINK_SENT
-                ? ' Se envió un correo a ' . $usuario->email . ' para que establezca su contraseña.'
-                : ' No se pudo enviar el correo de acceso; edita el usuario para asignarle una contraseña.';
+            $token = Password::createToken($usuario);
+            $usuario->notify(new BienvenidaUsuario($token));
+
+            $mensaje .= ' Se envió un correo de bienvenida a ' . $usuario->email . ' para que establezca su contraseña.';
         } catch (Throwable $e) {
-            Log::warning('No se pudo enviar el correo de acceso: ' . $e->getMessage());
+            Log::warning('No se pudo enviar el correo de bienvenida: ' . $e->getMessage());
             $mensaje .= ' No se pudo enviar el correo (revisa la configuración de correo); edita el usuario para asignarle una contraseña.';
         }
- 
+
         return redirect()->route('usuarios.index')
             ->with('success', $mensaje);
     }
- 
+
     /**
      * Display the specified resource.
      */
@@ -83,7 +81,7 @@ class UserController extends Controller
     {
         //
     }
- 
+
     /**
      * Show the form for editing the specified resource.
      */
@@ -93,7 +91,7 @@ class UserController extends Controller
         $roles = Role::all();
         return view('usuarios.edit', compact('usuario', 'roles'));
     }
- 
+
     /**
      * Update the specified resource in storage.
      */
@@ -107,17 +105,17 @@ class UserController extends Controller
             'phone' => $request->phone,
             'is_active' => $request->boolean('is_active'),
         ]);
- 
+
         if ($request->filled('password')) {
             $usuario->update(['password' => Hash::make($request->password)]);
         }
- 
+
         $usuario->syncRoles($request->rol);
- 
+
         return redirect()->route('usuarios.index')
             ->with('success', 'Usuario actualizado correctamente.');
     }
- 
+
     /**
      * Remove the specified resource from storage.
      */
@@ -126,7 +124,7 @@ class UserController extends Controller
         //
         $usuario->update(['is_active' => false]);
         $usuario->delete();
- 
+
         return redirect()->route('usuarios.index')
             ->with('success', 'Usuario eliminado correctamente.');
     }

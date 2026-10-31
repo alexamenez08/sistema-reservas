@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Notifications\BaseDatosRestaurada;
+use App\Notifications\RespaldoGenerado;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -32,14 +36,7 @@ class RespaldoController extends Controller
     /** Nombre válido de un archivo de respaldo (evita rutas manipuladas al descargar o borrar). */
     private const PATRON = '/^respaldo_\d{4}-\d{2}-\d{2}_\d{6}(_previo)?\.sql$/';
 
-    /**
-     * Tablas temporales que no se respaldan. Sus secuencias también deben excluirse: si no, el .sql
-     * intenta borrar jobs_id_seq mientras la tabla jobs sigue existiendo y la restauración falla.
-     */
-    private const TABLAS_EXCLUIDAS = [
-        'sessions', 'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs',
-        'jobs_id_seq', 'failed_jobs_id_seq',
-    ];
+    private const TABLAS_EXCLUIDAS = ['sessions', 'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs', 'jobs_id_seq', 'failed_jobs_id_seq',];
 
     public function index(): View
     {
@@ -64,7 +61,7 @@ class RespaldoController extends Controller
     {
         set_time_limit(0);
         $nombre = 'respaldo_' . now()->format('Y-m-d_His') . '.sql';
-
+ 
         try {
             $this->generarRespaldo($nombre);
         } catch (RuntimeException $e) {
@@ -72,15 +69,16 @@ class RespaldoController extends Controller
                 ->with('error', 'No se pudo generar el respaldo. ' . $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Error inesperado al generar el respaldo: ' . $e->getMessage());
-
+ 
             return redirect()->route('respaldos.index')
                 ->with('error', 'No se pudo generar el respaldo por un error inesperado. Revisa storage/logs/laravel.log.');
         }
-
+ 
         Log::info('Respaldo generado', ['archivo' => $nombre, 'usuario_id' => $request->user()?->id]);
-
-        // FN20: aquí se creará la notificación del respaldo (fecha y hora).
-
+ 
+        // FN20: notificación interna con fecha y hora para los administradores
+        $this->notificarAdministradores(new RespaldoGenerado($nombre, $request->user()?->name));
+ 
         return redirect()->route('respaldos.index')
             ->with('success', "Respaldo generado correctamente: {$nombre}");
     }
@@ -108,7 +106,7 @@ class RespaldoController extends Controller
     public function restaurar(Request $request): RedirectResponse
     {
         set_time_limit(0);
-
+ 
         $request->validate([
             'archivo' => [
                 'bail', 'required', 'file', 'max:512000',
@@ -131,7 +129,7 @@ class RespaldoController extends Controller
             'confirmacion.required' => 'Escribe RESTAURAR para confirmar.',
             'confirmacion.in'       => 'Escribe exactamente la palabra RESTAURAR para confirmar.',
         ]);
-
+ 
         // 1) Respaldo previo de seguridad: si no se puede crear, no se restaura nada.
         $previo = 'respaldo_' . now()->format('Y-m-d_His') . '_previo.sql';
         try {
@@ -140,7 +138,7 @@ class RespaldoController extends Controller
             return redirect()->route('respaldos.index')
                 ->with('error', 'No se restauró nada: no se pudo crear el respaldo previo de seguridad. ' . $e->getMessage());
         }
-
+ 
         // 2) Restauración en una sola transacción (todo o nada)
         try {
             $c = $this->conexion();
@@ -160,20 +158,22 @@ class RespaldoController extends Controller
                 ->with('error', 'No se pudo restaurar el respaldo; la base de datos no se modificó. ' . $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Error inesperado al restaurar: ' . $e->getMessage());
-
+ 
             return redirect()->route('respaldos.index')
                 ->with('error', 'No se pudo restaurar el respaldo por un error inesperado. Revisa storage/logs/laravel.log.');
         }
-
+ 
         // Los roles y permisos pudieron cambiar: se limpia su caché
         try {
             app(PermissionRegistrar::class)->forgetCachedPermissions();
         } catch (Throwable $e) {
             // no es crítico
         }
-
+ 
         Log::info('Base de datos restaurada', ['usuario_id' => $request->user()?->id, 'respaldo_previo' => $previo]);
-
+ 
+        $this->notificarAdministradores(new BaseDatosRestaurada($previo, $request->user()?->name));
+ 
         return redirect()->route('respaldos.index')
             ->with('success', "Base de datos restaurada correctamente. Antes se guardó una copia de seguridad: {$previo}. "
                 . 'Si tu usuario no existía en ese respaldo, tendrás que iniciar sesión de nuevo.');
@@ -290,6 +290,16 @@ class RespaldoController extends Controller
                 => "La versión de {$herramienta} es más antigua que la del servidor PostgreSQL. Usa la herramienta de la misma versión del servidor.",
             default => "{$herramienta} reportó un error: " . Str::limit($error, 300),
         };
+    }
+
+    /** Crea una notificación interna para todos los administradores activos (sin romper la operación si falla). */
+    private function notificarAdministradores(\Illuminate\Notifications\Notification $notificacion): void
+    {
+        try {
+            Notification::send(User::role('administrador')->where('is_active', true)->get(), $notificacion);
+        } catch (Throwable $e) {
+            Log::warning('No se pudo crear la notificación: ' . $e->getMessage());
+        }
     }
 
     /** Ruta relativa dentro del disco "local" (para exists, delete, files...). */
